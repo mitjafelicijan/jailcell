@@ -89,6 +89,9 @@ Save and quit.
 .BI :new " title"
 Create a new note.
 .TP
+.BI :add " path"
+Import a file into the cell.
+.TP
 .BI :rename " name"
 Rename the current item.
 .TP

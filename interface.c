@@ -695,6 +695,20 @@ void execute_reload(app_state_t *state) {
 	}
 }
 
+void execute_add_file(app_state_t *state, const char *path) {
+	char expanded[512];
+	expand_path(path, expanded, sizeof(expanded));
+
+	if (cell_add_file(state->db, expanded) == SQLITE_OK) {
+		refresh_items(state);
+		state->selected_idx = 0; // New items appear at the top
+		load_content(state);
+		snprintf(state->messageline, sizeof(state->messageline), "Added file: %.200s", path);
+	} else {
+		snprintf(state->messageline, sizeof(state->messageline), "Error: Failed to add file");
+	}
+}
+
 void execute_new_note(app_state_t *state, const char *title) {
 	if (cell_add_note(state->db, title, "") == SQLITE_OK) {
 		refresh_items(state);
@@ -754,6 +768,8 @@ void process_command(app_state_t *state) {
 		execute_delete(state);
 	} else if (strncmp(state->cmd_buf, "export ", 7) == 0) {
 		execute_export(state, state->cmd_buf + 7);
+	} else if (strncmp(state->cmd_buf, "add ", 4) == 0) {
+		execute_add_file(state, state->cmd_buf + 4);
 	} else if (strncmp(state->cmd_buf, "n ", 2) == 0 || strncmp(state->cmd_buf, "new ", 4) == 0) {
 		const char *title = (state->cmd_buf[1] == ' ') ? state->cmd_buf + 2 : state->cmd_buf + 4;
 		execute_new_note(state, title);

@@ -82,6 +82,7 @@ Jailcell includes an interactive TUI for managing your cell without manual CLI f
     - `:q`: Quit the application.
     - `:wq`: Save and quit.
     - `:new <title>`: Create a new note.
+    - `:add <path>`: Import a file into the cell.
     - `:rename <name>`: Rename the current item.
     - `:delete`: Delete the current item.
     - `:export <path>`: Export current item to disk.
