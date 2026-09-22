@@ -2,6 +2,8 @@
 
 Jailcell is a command-line utility for storing text notes and binary files within an encrypted container. It uses SQLCipher to provide transparent AES-256 encryption for the underlying SQLite database.
 
+<img width="1680" height="1019" alt="Screenshot 2026-09-22 at 15 57 22" src="https://github.com/user-attachments/assets/1fe18849-73b7-4a29-ad92-ceca3d5778d7" />
+
 ## Installation
 
 ### Prerequisites
