@@ -261,6 +261,8 @@ static void format_size(long long bytes, char *buf, size_t buf_size) {
 	}
 	if (i == 0) {
 		snprintf(buf, buf_size, "%lld %s", bytes, units[i]);
+	} else if (d_bytes == (long long)d_bytes) {
+		snprintf(buf, buf_size, "%.0f %s", d_bytes, units[i]);
 	} else {
 		snprintf(buf, buf_size, "%.1f %s", d_bytes, units[i]);
 	}

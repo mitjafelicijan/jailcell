@@ -326,7 +326,11 @@ void format_size(int bytes, char *out) {
 		size /= 1024;
 		i++;
 	}
-	sprintf(out, "%.2f %s", size, units[i]);
+	if (size == (long long)size) {
+		sprintf(out, "%.0f %s", size, units[i]);
+	} else {
+		sprintf(out, "%.2f %s", size, units[i]);
+	}
 }
 
 void update_main_area(app_state_t *state) {
@@ -411,7 +415,7 @@ void update_finder_drawer(app_state_t *state) {
 			mvprintw(list_y + i, 5, "%.*s", max_title_len, item->title);
 
 			if (state->w > info_len + 10) {
-				mvprintw(list_y + i, state->w - info_len - 2, "%s", info_str);
+				mvprintw(list_y + i, state->w - info_len - 1, "%s", info_str);
 			}
 			attroff(A_REVERSE);
 		} else {
@@ -425,7 +429,7 @@ void update_finder_drawer(app_state_t *state) {
 
 			if (state->w > info_len + 10) {
 				attron(A_DIM);
-				mvprintw(list_y + i, state->w - info_len - 2, "%s", info_str);
+				mvprintw(list_y + i, state->w - info_len - 1, "%s", info_str);
 				attroff(A_DIM);
 			}
 		}
