@@ -1,0 +1,17 @@
+# Build Artifacts
+jailcell
+jc
+jailcell.1
+*.o
+*.a
+
+# Generated Source Files
+sqlite3.c
+sqlite3.h
+sqlite3ext.h
+
+# Dependencies
+deps/
+
+# Databases / Cells
+*.db

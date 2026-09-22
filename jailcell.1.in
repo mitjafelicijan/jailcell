@@ -1,0 +1,149 @@
+.TH JAILCELL 1 "@@DATE@@" "@@VERSION@@" "Jailcell Manual"
+.SH NAME
+jailcell \- a secure note-taking and file storage utility
+.SH SYNOPSIS
+.B jailcell
+[\fIOPTIONS\fR] \fICELL_NAME\fR
+.SH DESCRIPTION
+.B jailcell
+is a command-line utility for storing text notes and binary files within an encrypted container. It uses SQLCipher to provide transparent AES-256 encryption for the underlying SQLite database.
+
+If action flags (such as \fB\-\-list\fR, \fB\-\-add\fR, or \fB\-\-show\fR) are present, \fBjailcell\fR executes the specific command and exits immediately. If no action is specified, \fBjailcell\fR starts an interactive Terminal User Interface (TUI).
+
+.SH OPTIONS
+.TP
+.BR \-n ", " \-\-new
+Create a new encrypted cell.
+.TP
+.BR \-a ", " \-\-add
+Add a new text note. Requires \fB\-t\fR and \fB\-c\fR.
+.TP
+.BR \-l ", " \-\-list
+List all notes and files in the cell.
+.TP
+.BI \-s ", " \-\-show " id"
+Display note content or file metadata for the given ID.
+.TP
+.BI \-t ", " \-\-title " text"
+Set the title for a new note.
+.TP
+.BI \-c ", " \-\-content " text"
+Set the content for a new note.
+.TP
+.BI \-F ", " \-\-file " path"
+Import a file from \fIpath\fR into the cell.
+.TP
+.BI \-f ", " \-\-format " fmt"
+Set the output format for listing or showing. Valid formats are \fBtext\fR, \fBjson\fR, and \fBxml\fR. Default is \fBtext\fR.
+.TP
+.BI \-x ", " \-\-export " id"
+Export a file from the cell by its ID. Requires \fB\-o\fR.
+.TP
+.BI \-o ", " \-\-out " path"
+Destination path for exported files.
+.TP
+.BR \-v ", " \-\-version
+Show version information.
+.TP
+.BR \-h ", " \-\-help
+Show help message.
+
+.SH TUI MODE
+Jailcell includes an interactive TUI for managing your cell without manual CLI flags. It uses a modal system inspired by Vim.
+
+.SS Normal Mode
+Navigation and action triggers.
+.TP
+.BR h ", " j ", " k ", " l " / Arrows"
+Movement.
+.TP
+.BR w ", " b
+Jump by word.
+.TP
+.BR { ", " }
+Jump by paragraph.
+.TP
+.BR i ", " I ", " A ", " C
+Enter Insert mode (standard Vim behavior).
+.TP
+.B D
+Delete to end of line.
+.TP
+.B Ctrl+P
+Open Item Finder/Search.
+.TP
+.B :
+Enter Command mode.
+
+.SS Command Mode
+.TP
+.B :w
+Save changes to the cell.
+.TP
+.B :q
+Quit the application.
+.TP
+.B :wq
+Save and quit.
+.TP
+.BI :new " title"
+Create a new note.
+.TP
+.BI :rename " name"
+Rename the current item.
+.TP
+.B :delete
+Delete the current item.
+.TP
+.BI :export " path"
+Export current item to disk.
+
+.SS Finder Mode (Ctrl+P)
+Type to filter items by name. Use \fBj\fR/\fBk\fR to select and \fBEnter\fR to open.
+
+.SH EXAMPLES
+Create a new encrypted database:
+.IP
+.B jailcell -n myvault.db
+.PP
+Add a note with a title and content:
+.IP
+.B jailcell -a -t "Meeting" -c "Project plan approved." myvault.db
+.PP
+Import a binary file:
+.IP
+.B jailcell -F ./document.pdf myvault.db
+.PP
+List all entries as JSON:
+.IP
+.B jailcell -l -f json myvault.db
+.PP
+Export file with ID 3:
+.IP
+.B jailcell -x 3 -o ./recovered.pdf myvault.db
+.PP
+Launch the interactive TUI:
+.IP
+.B jailcell myvault.db
+
+.SH SEE ALSO
+.BR sqlite3 (1),
+.BR sqlcipher (1)
+
+.SH REPORTING BUGS
+Report bugs and find project resources at <https://github.com/mitjafelicijan/jailcell>
+
+.SH ACKNOWLEDGEMENTS
+Jailcell makes use of the following libraries:
+.TP
+.B ezxml
+XML parsing library <https://github.com/lxfontes/ezxml>
+.TP
+.B cJSON
+JSON parsing library <https://github.com/DaveGamble/cJSON>
+
+.SH LICENSE
+Jailcell is released under the BSD 2-Clause License.
+
+.SH AUTHOR
+Mitja Felicijan
