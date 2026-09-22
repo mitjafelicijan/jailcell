@@ -9,6 +9,13 @@
 #include "interface.h"
 #include "cell.h"
 
+#ifndef BUTTON4_PRESSED
+#define BUTTON4_PRESSED 0x00080000
+#endif
+#ifndef BUTTON5_PRESSED
+#define BUTTON5_PRESSED 0x00200000
+#endif
+
 typedef enum {
 	MODE_NORMAL,
 	MODE_INSERT,

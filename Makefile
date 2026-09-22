@@ -2,14 +2,20 @@ CC ?= gcc
 VERSION = 1.0.0
 DATE = $(shell date +'%d %B %Y')
 
+OPENSSL_CFLAGS  := $(shell pkg-config --cflags openssl)
+OPENSSL_LDFLAGS := $(shell pkg-config --libs openssl)
+NCURSES_CFLAGS  := $(shell pkg-config --cflags ncursesw || pkg-config --cflags ncurses)
+NCURSES_LDFLAGS := $(shell pkg-config --libs ncursesw || pkg-config --libs ncurses)
+
 CFLAGS = -O2 -g -Wall -DSQLITE_HAS_CODEC -I. \
+         $(OPENSSL_CFLAGS) $(NCURSES_CFLAGS) \
          -DJAILCELL_VERSION=\"$(VERSION)\" \
          -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
          -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
          -DSQLITE_TEMP_STORE=2 \
          -DSQLITE_USE_URI \
          -DSQLITE_DIRECT_OVERFLOW_READ=0
-LDFLAGS = -lcrypto -lpthread -ldl -lm -lncursesw
+LDFLAGS = $(OPENSSL_LDFLAGS) $(NCURSES_LDFLAGS) -lpthread -ldl -lm
 
 PREFIX ?= /usr/local
 BINDIR = $(PREFIX)/bin
@@ -26,7 +32,7 @@ all: check-deps $(ALL)
 
 check-deps:
 	@pkg-config --exists openssl || (echo "Error: openssl development headers missing"; exit 1)
-	@pkg-config --exists ncursesw || (echo "Error: ncursesw development headers missing"; exit 1)
+	@pkg-config --exists ncursesw || pkg-config --exists ncurses || (echo "Error: ncurses development headers missing"; exit 1)
 
 jailcell.1: jailcell.1.in
 	sed -e 's/@@VERSION@@/$(VERSION)/g' \
@@ -36,7 +42,7 @@ sqlite3.c sqlite3.h: $(SQLCIPHER_ZIP)
 	mkdir -p $(SQLCIPHER_DIR)
 	unzip -q -o $(SQLCIPHER_ZIP) -d deps/
 	mv deps/sqlcipher-5.0.0-beta/* $(SQLCIPHER_DIR)/ || true
-	cd $(SQLCIPHER_DIR) && ./configure --with-tempstore=yes --disable-tcl --disable-shared CFLAGS="-DSQLITE_HAS_CODEC" LDFLAGS="-lcrypto"
+	cd $(SQLCIPHER_DIR) && ./configure --with-tempstore=yes --disable-tcl --disable-shared CFLAGS="-DSQLITE_HAS_CODEC $(OPENSSL_CFLAGS)" LDFLAGS="$(OPENSSL_LDFLAGS)"
 	cd $(SQLCIPHER_DIR) && make sqlite3.c
 	cp $(SQLCIPHER_DIR)/sqlite3.c .
 	cp $(SQLCIPHER_DIR)/sqlite3.h .
