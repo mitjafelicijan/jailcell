@@ -303,6 +303,7 @@ void init_interface() {
 void init_statusline() {
 	if (has_colors()) {
 		start_color();
+		use_default_colors();
 		if (COLORS >= 256) {
 			init_pair(1, COLOR_BLACK, 250);
 		} else {
