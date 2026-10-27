@@ -24,6 +24,13 @@ typedef enum {
 } app_mode_t;
 
 typedef struct {
+	char **lines;
+	int line_count;
+	int cursor_x;
+	int cursor_y;
+} history_state_t;
+
+typedef struct {
 	sqlite3 *db;
 	cell_item_t *items;
 	int items_count;
@@ -51,7 +58,17 @@ typedef struct {
 	int status_y;
 	int cmd_y;
 	int finder_h;
+
+	history_state_t *undo_stack;
+	int undo_count;
+	int undo_capacity;
+
+	history_state_t *redo_stack;
+	int redo_count;
+	int redo_capacity;
 } app_state_t;
+
+void sync_view(app_state_t *state);
 
 // State Management
 
@@ -96,7 +113,145 @@ void update_finder(app_state_t *state) {
 	}
 }
 
+history_state_t history_clone(app_state_t *state) {
+	history_state_t h;
+	h.line_count = state->line_count;
+	h.cursor_x = state->cursor_x;
+	h.cursor_y = state->cursor_y;
+	if (h.line_count > 0 && state->lines) {
+		h.lines = malloc(sizeof(char *) * h.line_count);
+		for (int i = 0; i < h.line_count; i++) {
+			h.lines[i] = strdup(state->lines[i]);
+		}
+	} else {
+		h.lines = NULL;
+	}
+	return h;
+}
+
+void history_free_state(history_state_t h) {
+	if (h.lines) {
+		for (int i = 0; i < h.line_count; i++) {
+			free(h.lines[i]);
+		}
+		free(h.lines);
+	}
+}
+
+void history_clear(app_state_t *state) {
+	if (state->undo_stack) {
+		for (int i = 0; i < state->undo_count; i++) {
+			history_free_state(state->undo_stack[i]);
+		}
+		free(state->undo_stack);
+		state->undo_stack = NULL;
+	}
+	state->undo_count = 0;
+	state->undo_capacity = 0;
+
+	if (state->redo_stack) {
+		for (int i = 0; i < state->redo_count; i++) {
+			history_free_state(state->redo_stack[i]);
+		}
+		free(state->redo_stack);
+		state->redo_stack = NULL;
+	}
+	state->redo_count = 0;
+	state->redo_capacity = 0;
+}
+
+void push_undo(app_state_t *state) {
+	if (state->is_binary || !state->lines) return;
+
+	if (state->redo_stack) {
+		for (int i = 0; i < state->redo_count; i++) {
+			history_free_state(state->redo_stack[i]);
+		}
+		free(state->redo_stack);
+		state->redo_stack = NULL;
+	}
+	state->redo_count = 0;
+	state->redo_capacity = 0;
+
+	if (state->undo_count >= state->undo_capacity) {
+		state->undo_capacity = state->undo_capacity == 0 ? 16 : state->undo_capacity * 2;
+		state->undo_stack = realloc(state->undo_stack, sizeof(history_state_t) * state->undo_capacity);
+	}
+	state->undo_stack[state->undo_count++] = history_clone(state);
+}
+
+void push_redo(app_state_t *state) {
+	if (state->is_binary || !state->lines) return;
+
+	if (state->redo_count >= state->redo_capacity) {
+		state->redo_capacity = state->redo_capacity == 0 ? 16 : state->redo_capacity * 2;
+		state->redo_stack = realloc(state->redo_stack, sizeof(history_state_t) * state->redo_capacity);
+	}
+	state->redo_stack[state->redo_count++] = history_clone(state);
+}
+
+void execute_undo(app_state_t *state) {
+	if (state->is_binary || !state->lines) return;
+
+	if (state->undo_count == 0) {
+		snprintf(state->messageline, sizeof(state->messageline), "Already at oldest change");
+		return;
+	}
+
+	push_redo(state);
+
+	history_state_t h = state->undo_stack[--state->undo_count];
+
+	if (state->lines) {
+		for (int i = 0; i < state->line_count; i++) {
+			free(state->lines[i]);
+		}
+		free(state->lines);
+	}
+
+	state->lines = h.lines;
+	state->line_count = h.line_count;
+	state->cursor_x = h.cursor_x;
+	state->cursor_y = h.cursor_y;
+	state->is_dirty = 1;
+	sync_view(state);
+	snprintf(state->messageline, sizeof(state->messageline), "Undo");
+}
+
+void execute_redo(app_state_t *state) {
+	if (state->is_binary || !state->lines) return;
+
+	if (state->redo_count == 0) {
+		snprintf(state->messageline, sizeof(state->messageline), "Already at newest change");
+		return;
+	}
+
+	if (state->undo_count >= state->undo_capacity) {
+		state->undo_capacity = state->undo_capacity == 0 ? 16 : state->undo_capacity * 2;
+		state->undo_stack = realloc(state->undo_stack, sizeof(history_state_t) * state->undo_capacity);
+	}
+	state->undo_stack[state->undo_count++] = history_clone(state);
+
+	history_state_t h = state->redo_stack[--state->redo_count];
+
+	if (state->lines) {
+		for (int i = 0; i < state->line_count; i++) {
+			free(state->lines[i]);
+		}
+		free(state->lines);
+	}
+
+	state->lines = h.lines;
+	state->line_count = h.line_count;
+	state->cursor_x = h.cursor_x;
+	state->cursor_y = h.cursor_y;
+	state->is_dirty = 1;
+	sync_view(state);
+	snprintf(state->messageline, sizeof(state->messageline), "Redo");
+}
+
 void free_content(app_state_t *state) {
+	history_clear(state);
 	if (state->lines) {
 		for (int i = 0; i < state->line_count; i++) {
 			free(state->lines[i]);
@@ -599,19 +754,19 @@ void handle_mouse(app_state_t *state) {
 	MEVENT event;
 	if (getmouse(&event) == OK) {
 		// Scroll wheel (button 4 is up, button 5 is down usually)
-		#if defined(NCURSES_MOUSE_VERSION) && NCURSES_MOUSE_VERSION >= 2
+#if defined(NCURSES_MOUSE_VERSION) && NCURSES_MOUSE_VERSION >= 2
 		if (event.bstate & BUTTON4_PRESSED || event.bstate & 0x10000) { // 0x10000 is often scroll up
 			if (state->scroll_y > 0) state->scroll_y--;
 		} else if (event.bstate & BUTTON5_PRESSED || event.bstate & 0x00200000) { // 0x00200000 is often scroll down
 			if (state->scroll_y < state->line_count - 1) state->scroll_y++;
 		}
-		#else
+#else
 		if (event.bstate & BUTTON4_PRESSED) {
 			if (state->scroll_y > 0) state->scroll_y--;
 		} else if (event.bstate & BUTTON5_PRESSED) {
 			if (state->scroll_y < state->line_count - 1) state->scroll_y++;
 		}
-		#endif
+#endif
 	}
 }
 
@@ -810,11 +965,13 @@ void handle_normal_mode(app_state_t *state, int ch) {
 			break;
 		case 'i':
 			if (state->selected_idx >= 0 && !state->is_binary) {
+				push_undo(state);
 				state->mode = MODE_INSERT;
 			}
 			break;
 		case 'o':
 			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				push_undo(state);
 				state->lines = realloc(state->lines, sizeof(char *) * (state->line_count + 1));
 				memmove(state->lines + state->cursor_y + 2, state->lines + state->cursor_y + 1, sizeof(char *) * (state->line_count - state->cursor_y - 1));
 				state->lines[state->cursor_y + 1] = strdup("");
@@ -828,6 +985,7 @@ void handle_normal_mode(app_state_t *state, int ch) {
 			break;
 		case 'O':
 			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				push_undo(state);
 				state->lines = realloc(state->lines, sizeof(char *) * (state->line_count + 1));
 				memmove(state->lines + state->cursor_y + 1, state->lines + state->cursor_y, sizeof(char *) * (state->line_count - state->cursor_y));
 				state->lines[state->cursor_y] = strdup("");
@@ -838,6 +996,12 @@ void handle_normal_mode(app_state_t *state, int ch) {
 				sync_view(state);
 			}
 			break;
+		case 'u':
+			execute_undo(state);
+			break;
+		case 18: // Ctrl+R
+			execute_redo(state);
+			break;
 		case 'w':
 			move_cursor_word(state, 1);
 			break;
@@ -846,6 +1010,7 @@ void handle_normal_mode(app_state_t *state, int ch) {
 			break;
 		case 'A':
 			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				push_undo(state);
 				state->cursor_x = strlen(state->lines[state->cursor_y]);
 				state->mode = MODE_INSERT;
 				sync_view(state);
@@ -853,6 +1018,7 @@ void handle_normal_mode(app_state_t *state, int ch) {
 			break;
 		case 'I':
 			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				push_undo(state);
 				state->cursor_x = 0;
 				state->mode = MODE_INSERT;
 				sync_view(state);
@@ -860,6 +1026,7 @@ void handle_normal_mode(app_state_t *state, int ch) {
 			break;
 		case 'C':
 			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				push_undo(state);
 				state->lines[state->cursor_y][state->cursor_x] = '\0';
 				state->is_dirty = 1;
 				state->mode = MODE_INSERT;
@@ -868,6 +1035,7 @@ void handle_normal_mode(app_state_t *state, int ch) {
 			break;
 		case 'D':
 			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				push_undo(state);
 				state->lines[state->cursor_y][state->cursor_x] = '\0';
 				state->is_dirty = 1;
 				sync_view(state);
