@@ -813,6 +813,31 @@ void handle_normal_mode(app_state_t *state, int ch) {
 				state->mode = MODE_INSERT;
 			}
 			break;
+		case 'o':
+			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				state->lines = realloc(state->lines, sizeof(char *) * (state->line_count + 1));
+				memmove(state->lines + state->cursor_y + 2, state->lines + state->cursor_y + 1, sizeof(char *) * (state->line_count - state->cursor_y - 1));
+				state->lines[state->cursor_y + 1] = strdup("");
+				state->line_count++;
+				state->cursor_y++;
+				state->cursor_x = 0;
+				state->mode = MODE_INSERT;
+				state->is_dirty = 1;
+				sync_view(state);
+			}
+			break;
+		case 'O':
+			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				state->lines = realloc(state->lines, sizeof(char *) * (state->line_count + 1));
+				memmove(state->lines + state->cursor_y + 1, state->lines + state->cursor_y, sizeof(char *) * (state->line_count - state->cursor_y));
+				state->lines[state->cursor_y] = strdup("");
+				state->line_count++;
+				state->cursor_x = 0;
+				state->mode = MODE_INSERT;
+				state->is_dirty = 1;
+				sync_view(state);
+			}
+			break;
 		case 'w':
 			move_cursor_word(state, 1);
 			break;
