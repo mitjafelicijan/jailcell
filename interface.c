@@ -66,6 +66,8 @@ typedef struct {
 	history_state_t *redo_stack;
 	int redo_count;
 	int redo_capacity;
+
+	char pending_op;
 } app_state_t;
 
 void sync_view(app_state_t *state);
@@ -248,6 +250,30 @@ void execute_redo(app_state_t *state) {
 	state->is_dirty = 1;
 	sync_view(state);
 	snprintf(state->messageline, sizeof(state->messageline), "Redo");
+}
+
+void delete_line(app_state_t *state) {
+	if (state->is_binary || !state->lines || state->line_count == 0) return;
+
+	push_undo(state);
+
+	free(state->lines[state->cursor_y]);
+
+	if (state->line_count > 1) {
+		memmove(state->lines + state->cursor_y, state->lines + state->cursor_y + 1, sizeof(char *) * (state->line_count - state->cursor_y - 1));
+		state->line_count--;
+		if (state->cursor_y >= state->line_count) {
+			state->cursor_y = state->line_count - 1;
+		}
+	} else {
+		state->lines[0] = strdup("");
+		state->line_count = 1;
+		state->cursor_y = 0;
+	}
+
+	state->cursor_x = 0;
+	state->is_dirty = 1;
+	sync_view(state);
 }
 
 void free_content(app_state_t *state) {
@@ -937,6 +963,41 @@ void process_command(app_state_t *state) {
 }
 
 void handle_normal_mode(app_state_t *state, int ch) {
+	if (ch == 27) { // ESC cancels pending operator
+		state->pending_op = '\0';
+		return;
+	}
+
+	if (state->pending_op != '\0') {
+		char op = state->pending_op;
+		state->pending_op = '\0';
+
+		if (op == 'd' && ch == 'd') {
+			delete_line(state);
+		} else if (op == 'c' && ch == 'c') {
+			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				push_undo(state);
+				state->lines[state->cursor_y][0] = '\0';
+				state->cursor_x = 0;
+				state->mode = MODE_INSERT;
+				state->is_dirty = 1;
+				sync_view(state);
+			}
+		} else if (op == 'g' && ch == 'g') {
+			if (state->selected_idx >= 0 && !state->is_binary && state->lines) {
+				state->cursor_y = 0;
+				state->cursor_x = 0;
+				sync_view(state);
+			}
+		}
+		return;
+	}
+
+	if (ch == 'd' || ch == 'c' || ch == 'g') {
+		state->pending_op = ch;
+		return;
+	}
+
 	switch (ch) {
 		case ':':
 			state->mode = MODE_COMMAND;
