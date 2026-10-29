@@ -7,6 +7,9 @@
 #include "cell.h"
 #include "interface.h"
 
+// Inactivity timeout in seconds before locking the application.
+#define INACTIVITY_TIMEOUT 120
+
 void get_password(const char *prompt, char *password, size_t size) {
 	struct termios oldt, newt;
 	printf("%s", prompt);
@@ -266,7 +269,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	} else if (mode == 0) {
-		interface_start(db, cell_name);
+		interface_start(db, cell_name, INACTIVITY_TIMEOUT);
 	}
 
 	sqlite3_close(db);

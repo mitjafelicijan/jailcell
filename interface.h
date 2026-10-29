@@ -3,6 +3,6 @@
 
 #include "sqlite3.h"
 
-void interface_start(sqlite3 *db, const char *cell_name);
+void interface_start(sqlite3 *db, const char *cell_name, int timeout_sec);
 
 #endif

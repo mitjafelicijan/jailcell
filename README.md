@@ -131,7 +131,12 @@ jailcell myvault.db
 
 - **Encryption**: Jailcell uses AES-256 encryption provided by SQLCipher. The database is encrypted at rest.
 - **Memory Safety**: Master passwords are wiped from memory using `memset` immediately after the database is opened. However, sensitive data currently being displayed in the TUI or terminal may remain in system RAM until the process terminates.
-- **TUI Session**: The TUI does not automatically lock. It is recommended to close the application or lock your screen when leaving your terminal unattended.
+- **Auto-Lock / Inactivity Timeout**: To protect sensitive data from exposure if left unattended, the TUI automatically locks after an inactivity timeout (default is 120 seconds / 2 minutes).
+  - Any unsaved changes are automatically saved before locking.
+  - All decrypted note contents cached in memory are immediately cleared.
+  - The database connection is closed, locking the container file and purging the AES-256 decryption key from RAM.
+  - A secure lock screen is displayed, prompting you to re-enter your master password to unlock and resume your session (or press `ESC` to quit).
+  - This inactivity timeout can be customized by adjusting the `INACTIVITY_TIMEOUT` macro at the top of `main.c` and recompiling the application.
 - **Binary Files**: When exporting files, they are written to the disk in their original (unencrypted) form. Ensure the destination directory is secure.
 
 ## Acknowledgements
