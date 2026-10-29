@@ -936,9 +936,161 @@ void execute_rename(app_state_t *state, const char *new_name) {
 	}
 }
 
+int prompt_unlock(const char *cell_name, sqlite3 **db) {
+	int max_y, max_x;
+	getmaxyx(stdscr, max_y, max_x);
+
+	clear();
+
+	char password[256];
+	int len = 0;
+	password[0] = '\0';
+
+	timeout(-1);
+	noecho();
+	curs_set(1);
+
+	while (1) {
+		clear();
+		int box_h = 7;
+		int box_w = 50;
+		int start_y = (max_y - box_h) / 2;
+		int start_x = (max_x - box_w) / 2;
+
+		if (start_y < 0) start_y = 0;
+		if (start_x < 0) start_x = 0;
+
+		// Draw box
+		for (int i = 0; i < box_w; i++) {
+			mvaddch(start_y, start_x + i, '-');
+			mvaddch(start_y + box_h - 1, start_x + i, '-');
+		}
+		for (int i = 0; i < box_h; i++) {
+			mvaddch(start_y + i, start_x, '|');
+			mvaddch(start_y + i, start_x + box_w - 1, '|');
+		}
+		mvaddch(start_y, start_x, '+');
+		mvaddch(start_y, start_x + box_w - 1, '+');
+		mvaddch(start_y + box_h - 1, start_x, '+');
+		mvaddch(start_y + box_h - 1, start_x + box_w - 1, '+');
+
+		mvprintw(start_y + 1, start_x + (box_w - 11) / 2, "CELL LOCKED");
+		int cell_label_len = strlen(cell_name) + 6;
+		int cell_label_start = start_x + (box_w - cell_label_len) / 2;
+		if (cell_label_start < start_x) cell_label_start = start_x + 1;
+		mvprintw(start_y + 2, cell_label_start, "Cell: %s", cell_name);
+		mvprintw(start_y + 4, start_x + 4, "Password: ");
+
+		for (int i = 0; i < len; i++) {
+			addch('*');
+		}
+
+		refresh();
+
+		int ch = getch();
+		if (ch == '\n' || ch == KEY_ENTER || ch == 13 || ch == 10) {
+			break;
+		} else if (ch == 27) { // ESC
+			memset(password, 0, sizeof(password));
+			curs_set(0);
+			timeout(1000);
+			return 0;
+		} else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+			if (len > 0) {
+				len--;
+				password[len] = '\0';
+			}
+		} else if (ch >= 32 && ch <= 126) {
+			if (len < 255) {
+				password[len++] = (char)ch;
+				password[len] = '\0';
+			}
+		}
+	}
+
+	curs_set(0);
+	timeout(1000);
+
+	sqlite3 *new_db = NULL;
+	int rc = cell_open(cell_name, password, &new_db);
+	memset(password, 0, sizeof(password));
+
+	if (rc == SQLITE_OK) {
+		*db = new_db;
+		return 1;
+	} else {
+		if (new_db) sqlite3_close(new_db);
+		return -1;
+	}
+}
+
+void lock_application(app_state_t *state) {
+	if (state->is_dirty) {
+		save_content(state);
+	}
+
+	free_content(state);
+
+	if (state->db) {
+		sqlite3_close(state->db);
+		state->db = NULL;
+	}
+
+	int unlocked = 0;
+	while (!unlocked) {
+		sqlite3 *new_db = NULL;
+		int res = prompt_unlock(state->cell_name, &new_db);
+		if (res == 1) {
+			state->db = new_db;
+			unlocked = 1;
+			refresh_items(state);
+			if (state->selected_idx >= 0) {
+				load_content(state);
+			}
+		} else if (res == 0) {
+			state->running = 0;
+			break;
+		} else {
+			int max_y, max_x;
+			getmaxyx(stdscr, max_y, max_x);
+
+			clear();
+			int box_h = 7;
+			int box_w = 50;
+			int start_y = (max_y - box_h) / 2;
+			int start_x = (max_x - box_w) / 2;
+			if (start_y < 0) start_y = 0;
+			if (start_x < 0) start_x = 0;
+
+			for (int i = 0; i < box_w; i++) {
+				mvaddch(start_y, start_x + i, '-');
+				mvaddch(start_y + box_h - 1, start_x + i, '-');
+			}
+			for (int i = 0; i < box_h; i++) {
+				mvaddch(start_y + i, start_x, '|');
+				mvaddch(start_y + i, start_x + box_w - 1, '|');
+			}
+			mvaddch(start_y, start_x, '+');
+			mvaddch(start_y, start_x + box_w - 1, '+');
+			mvaddch(start_y + box_h - 1, start_x, '+');
+			mvaddch(start_y + box_h - 1, start_x + box_w - 1, '+');
+
+			mvprintw(start_y + 2, start_x + (box_w - 18) / 2, "PASSWORD INCORRECT");
+			mvprintw(start_y + 4, start_x + (box_w - 32) / 2, "Press any key to try again...");
+			refresh();
+
+			timeout(-1);
+			getch();
+			timeout(1000);
+		}
+	}
+}
+
 void process_command(app_state_t *state) {
 	if (strcmp(state->cmd_buf, "q") == 0) {
 		state->running = 0;
+	} else if (strcmp(state->cmd_buf, "lock") == 0) {
+		lock_application(state);
 	} else if (strcmp(state->cmd_buf, "w") == 0) {
 		save_content(state);
 		snprintf(state->messageline, sizeof(state->messageline), "Saved to cell");
@@ -1230,156 +1382,6 @@ void handle_insert_mode(app_state_t *state, int ch) {
 	} else if (ch == KEY_RIGHT) {
 		if (state->cursor_x < (int)strlen(state->lines[state->cursor_y])) state->cursor_x++;
 		sync_view(state);
-	}
-}
-
-int prompt_unlock(const char *cell_name, sqlite3 **db) {
-	int max_y, max_x;
-	getmaxyx(stdscr, max_y, max_x);
-
-	clear();
-
-	char password[256];
-	int len = 0;
-	password[0] = '\0';
-
-	timeout(-1);
-	noecho();
-	curs_set(1);
-
-	while (1) {
-		clear();
-		int box_h = 7;
-		int box_w = 50;
-		int start_y = (max_y - box_h) / 2;
-		int start_x = (max_x - box_w) / 2;
-
-		if (start_y < 0) start_y = 0;
-		if (start_x < 0) start_x = 0;
-
-		// Draw box
-		for (int i = 0; i < box_w; i++) {
-			mvaddch(start_y, start_x + i, '-');
-			mvaddch(start_y + box_h - 1, start_x + i, '-');
-		}
-		for (int i = 0; i < box_h; i++) {
-			mvaddch(start_y + i, start_x, '|');
-			mvaddch(start_y + i, start_x + box_w - 1, '|');
-		}
-		mvaddch(start_y, start_x, '+');
-		mvaddch(start_y, start_x + box_w - 1, '+');
-		mvaddch(start_y + box_h - 1, start_x, '+');
-		mvaddch(start_y + box_h - 1, start_x + box_w - 1, '+');
-
-		mvprintw(start_y + 1, start_x + (box_w - 18) / 2, "APPLICATION LOCKED");
-		int cell_label_len = strlen(cell_name) + 6;
-		int cell_label_start = start_x + (box_w - cell_label_len) / 2;
-		if (cell_label_start < start_x) cell_label_start = start_x + 1;
-		mvprintw(start_y + 2, cell_label_start, "Cell: %s", cell_name);
-		mvprintw(start_y + 4, start_x + 4, "Password: ");
-
-		for (int i = 0; i < len; i++) {
-			addch('*');
-		}
-
-		refresh();
-
-		int ch = getch();
-		if (ch == '\n' || ch == KEY_ENTER || ch == 13 || ch == 10) {
-			break;
-		} else if (ch == 27) { // ESC
-			memset(password, 0, sizeof(password));
-			curs_set(0);
-			timeout(1000);
-			return 0;
-		} else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
-			if (len > 0) {
-				len--;
-				password[len] = '\0';
-			}
-		} else if (ch >= 32 && ch <= 126) {
-			if (len < 255) {
-				password[len++] = (char)ch;
-				password[len] = '\0';
-			}
-		}
-	}
-
-	curs_set(0);
-	timeout(1000);
-
-	sqlite3 *new_db = NULL;
-	int rc = cell_open(cell_name, password, &new_db);
-	memset(password, 0, sizeof(password));
-
-	if (rc == SQLITE_OK) {
-		*db = new_db;
-		return 1;
-	} else {
-		if (new_db) sqlite3_close(new_db);
-		return -1;
-	}
-}
-
-void lock_application(app_state_t *state) {
-	if (state->is_dirty) {
-		save_content(state);
-	}
-
-	free_content(state);
-
-	if (state->db) {
-		sqlite3_close(state->db);
-		state->db = NULL;
-	}
-
-	int unlocked = 0;
-	while (!unlocked) {
-		sqlite3 *new_db = NULL;
-		int res = prompt_unlock(state->cell_name, &new_db);
-		if (res == 1) {
-			state->db = new_db;
-			unlocked = 1;
-			refresh_items(state);
-			if (state->selected_idx >= 0) {
-				load_content(state);
-			}
-		} else if (res == 0) {
-			state->running = 0;
-			break;
-		} else {
-			int max_y, max_x;
-			getmaxyx(stdscr, max_y, max_x);
-
-			clear();
-			int box_h = 7;
-			int box_w = 50;
-			int start_y = (max_y - box_h) / 2;
-			int start_x = (max_x - box_w) / 2;
-			if (start_y < 0) start_y = 0;
-			if (start_x < 0) start_x = 0;
-
-			for (int i = 0; i < box_w; i++) {
-				mvaddch(start_y, start_x + i, '-');
-				mvaddch(start_y + box_h - 1, start_x + i, '-');
-			}
-			for (int i = 0; i < box_h; i++) {
-				mvaddch(start_y + i, start_x, '|');
-				mvaddch(start_y + i, start_x + box_w - 1, '|');
-			}
-			mvaddch(start_y, start_x, '+');
-			mvaddch(start_y, start_x + box_w - 1, '+');
-			mvaddch(start_y + box_h - 1, start_x, '+');
-			mvaddch(start_y + box_h - 1, start_x + box_w - 1, '+');
-
-			mvprintw(start_y + 2, start_x + (box_w - 18) / 2, "PASSWORD INCORRECT");
-			mvprintw(start_y + 4, start_x + (box_w - 32) / 2, "Press any key to try again...");
-			refresh();
-
-			timeout(-1);
-			getch();
-			timeout(1000);
-		}
 	}
 }
 
